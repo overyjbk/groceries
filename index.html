@@ -36,19 +36,14 @@ button{font:inherit;color:inherit;cursor:pointer}
   -webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);
   padding:calc(env(safe-area-inset-top) + 8px) 16px 10px}
 .titlerow{display:flex;align-items:flex-end;justify-content:space-between;max-width:640px;margin:0 auto}
-h1{margin:4px 0 10px;font-size:34px;font-weight:700;letter-spacing:.2px}
+h1{margin:4px 0 4px;font-size:34px;font-weight:700;letter-spacing:.2px}
 .textbtn{background:none;border:0;color:var(--tint);font-size:17px;padding:6px 0 14px}
 .textbtn[hidden]{display:none}
-.stores{display:flex;gap:8px;overflow-x:auto;margin:0 -16px;padding:0 16px;scrollbar-width:none;max-width:672px}
-@media (min-width:672px){.stores{margin:0 auto}}
-.stores::-webkit-scrollbar{display:none}
-.chip{flex:none;border:0;background:var(--fill);color:var(--text);font-size:15px;font-weight:500;
-  padding:7px 14px;border-radius:999px;white-space:nowrap}
-.chip.on{background:var(--tint);color:#fff}
-.chip.icon{padding:7px 12px;display:flex;align-items:center;gap:5px;color:var(--tint)}
+.hbtns{display:flex;gap:18px;align-items:center}
+#orderBtn{display:flex}
 
 /* list */
-main{max-width:640px;margin:0 auto;padding:10px 16px calc(var(--barh,110px) + 28px)}
+main{max-width:640px;margin:0 auto;padding:0 16px calc(var(--barh,110px) + 28px)}
 .sec h2{display:flex;justify-content:space-between;margin:20px 16px 7px;font-size:13px;font-weight:400;
   text-transform:uppercase;letter-spacing:.3px;color:var(--sec)}
 .card{list-style:none;margin:0;padding:0;background:var(--card);border-radius:12px;overflow:hidden}
@@ -133,9 +128,12 @@ main{max-width:640px;margin:0 auto;padding:10px 16px calc(var(--barh,110px) + 28
 <header id="top">
   <div class="titlerow">
     <h1>Groceries</h1>
-    <button id="clearBtn" class="textbtn" hidden>Clear</button>
+    <div class="hbtns">
+      <button id="orderBtn" class="textbtn" aria-label="Section order">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2v12M2 5l3-3 3 3M11 14V2M8 11l3 3 3-3"/></svg></button>
+      <button id="clearBtn" class="textbtn" hidden>Clear</button>
+    </div>
   </div>
-  <div class="stores" id="stores"></div>
 </header>
 
 <main id="list"></main>
@@ -170,13 +168,7 @@ const CATS = {
   household:'Household', care:'Personal care', other:'Other'
 };
 
-const STORES = [
-  {id:'ah', name:'Albert Heijn', order:'produce bakery meat fish deli dairy tofu breakfast pasta rice sauces canned snacks drinks alcohol frozen household care other'},
-  {id:'jumbo', name:'Jumbo', order:'produce bakery deli meat fish dairy tofu breakfast pasta rice sauces canned snacks drinks alcohol care household frozen other'},
-  {id:'lidl', name:'Lidl', order:'bakery produce deli meat fish dairy tofu frozen breakfast pasta rice sauces canned snacks drinks alcohol household care other'},
-  {id:'aldi', name:'Aldi', order:'produce bakery dairy deli meat fish tofu frozen breakfast pasta rice sauces canned snacks drinks alcohol household care other'},
-  {id:'oriental', name:'Amazing Oriental', order:'produce tofu rice sauces canned pasta snacks drinks alcohol meat fish frozen dairy deli bakery breakfast household care other'}
-];
+const DEFAULT_ORDER = 'produce bakery meat fish deli dairy tofu breakfast pasta rice sauces canned snacks drinks alcohol frozen household care other'.split(' ');
 
 // Keywords: Dutch, English, Chinese. "_" = space. Longer / end-of-word matches win.
 const RAW = {
@@ -289,37 +281,27 @@ const store = {
   get(){ try { return JSON.parse(localStorage.getItem(KEY)); } catch(e){ return mem[KEY] || null; } },
   set(v){ const s = JSON.stringify(v); mem[KEY] = JSON.parse(s); try { localStorage.setItem(KEY, s); } catch(e){} }
 };
-let S = Object.assign({items:[], store:'ah', orders:{}, overrides:{}, history:{}}, store.get() || {});
+let S = Object.assign({items:[], order:[], overrides:{}, history:{}}, store.get() || {});
 const save = () => store.set(S);
 const keyOf = name => norm(stripQty(name)) || norm(name);
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const categorize = name => S.overrides[keyOf(name)] || autoCategory(name);
 
-function getOrder(id = S.store){
-  const def = STORES.find(s => s.id === id).order.split(' ');
-  const custom = (S.orders[id] || []).filter(c => CATS[c]);
-  return [...custom, ...def.filter(c => !custom.includes(c))];
+function getOrder(){
+  const custom = (S.order || []).filter(c => CATS[c]);
+  return [...custom, ...DEFAULT_ORDER.filter(c => !custom.includes(c))];
 }
 
 /* ---------- elements ---------- */
 const $ = id => document.getElementById(id);
-const listEl = $('list'), storesEl = $('stores'), clearBtn = $('clearBtn');
+const listEl = $('list'), clearBtn = $('clearBtn');
 const input = $('input'), addBtn = $('addBtn'), suggEl = $('sugg'), bar = $('bar');
 const sheet = $('sheet'), overlay = $('overlay');
 
 function haptic(){ try { $('hapLabel').click(); } catch(e){} try { navigator.vibrate && navigator.vibrate(10); } catch(e){} }
 
 /* ---------- render ---------- */
-function renderStores(){
-  storesEl.innerHTML = STORES.map(s =>
-    `<button class="chip${s.id === S.store ? ' on' : ''}" data-store="${s.id}">${esc(s.name)}</button>`).join('') +
-    `<button class="chip icon" id="orderBtn" aria-label="Section order">
-       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 2v12M2 5l3-3 3 3M11 14V2M8 11l3 3 3-3"/></svg>Order</button>`;
-  const on = storesEl.querySelector('.on');
-  if (on) on.scrollIntoView({inline:'nearest', block:'nearest'});
-}
-
 function render(flashId){
   const groups = {};
   for (const it of S.items) (groups[it.cat] = groups[it.cat] || []).push(it);
@@ -442,12 +424,7 @@ clearBtn.addEventListener('click', () => {
   toast(`${n} item${n === 1 ? '' : 's'} cleared`, () => { S.items = before; save(); render(); });
 });
 
-/* ---------- stores ---------- */
-storesEl.addEventListener('click', e => {
-  if (e.target.closest('#orderBtn')) return openOrderSheet();
-  const b = e.target.closest('[data-store]'); if (!b) return;
-  S.store = b.dataset.store; save(); renderStores(); render();
-});
+$('orderBtn').addEventListener('click', openOrderSheet);
 
 /* ---------- sheets ---------- */
 function openSheet(html){
@@ -488,16 +465,15 @@ function openItemSheet(id){
 }
 
 function openOrderSheet(){
-  const st = STORES.find(s => s.id === S.store);
   openSheet(`
     <div class="shead"><button class="textbtn l" data-act="reset">Reset</button>
-      <div class="stitle">${esc(st.name)}</div><button class="textbtn r" data-act="close">Done</button>
-      <div class="sub">Drag sections into your store's walking order</div></div>
+      <div class="stitle">Section order</div><button class="textbtn r" data-act="close">Done</button>
+      <div class="sub">Drag sections into the order you walk the store</div></div>
     <div class="sbody" id="orderBody"><ul class="card" id="orderList" style="list-style:none;margin:0;padding:0">${orderRows()}</ul></div>`);
   sheet.onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.act === 'close') return closeSheet();
-    if (b.dataset.act === 'reset'){ delete S.orders[S.store]; save(); render(); $('orderList').innerHTML = orderRows(); }
+    if (b.dataset.act === 'reset'){ S.order = []; save(); render(); $('orderList').innerHTML = orderRows(); }
   };
   enableDrag($('orderList'), $('orderBody'));
 }
@@ -532,7 +508,7 @@ function enableDrag(ul, scroller){
       cancelAnimationFrame(raf);
       li.style.transform = ''; li.classList.remove('dragging');
       h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up);
-      S.orders[S.store] = [...ul.children].map(x => x.dataset.cat); save(); render();
+      S.order = [...ul.children].map(x => x.dataset.cat); save(); render();
     };
     h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
     raf = requestAnimationFrame(step);
@@ -565,7 +541,7 @@ if (window.visualViewport){
 new ResizeObserver(() => document.documentElement.style.setProperty('--barh', bar.offsetHeight + 'px')).observe(bar);
 
 /* ---------- start ---------- */
-renderStores(); render();
+render();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch(e){}
 </script>
